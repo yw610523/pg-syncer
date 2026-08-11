@@ -1,10 +1,12 @@
-import { StringDecoder } from 'node:string_decoder';
+import iconv from 'iconv-lite';
+import { fallbackEncoding } from '../utils/encoding.js';
 
 /**
  * 把字节流按换行符切分成行，并在每行产出时调用回调。
  *
  * 改进点：
- * - 使用 StringDecoder 处理 Buffer，避免多字节 UTF-8 字符被 Buffer 边界切坏导致乱码
+ * - 在字节层面缓存，遇到完整行后再解码，避免多字节字符被 Buffer 边界切坏
+ * - 优先以 UTF-8 解码；若出现替换字符（U+FFFD），则回退到系统默认编码（Windows 下通常为 GBK）
  * - 同时把 \n 和 \r 视为行结束符（pg_dump/pg_restore 会用 \r 刷新进度）
  * - 提供 flush()，在子进程关闭时把缓冲区的剩余内容（不含结尾空行）也发出
  */
@@ -19,46 +21,55 @@ export function createLineSplitter(
   emit: (line: string) => void,
   maxBuffer = 128 * 1024,
 ): LineSplitter {
-  const decoder = new StringDecoder('utf8');
-  let buf = '';
+  let rawBuf = Buffer.alloc(0);
 
-  const emitLine = (raw: string): void => {
-    // 去掉行尾 \r（兼容 Windows \r\n）和 \n
-    const line = raw.replace(/\r$/, '').replace(/\n$/, '');
+  /** 解码一行字节：优先 UTF-8，失败则回退到系统编码 */
+  const decodeLine = (lineBuf: Buffer): string => {
+    const utf8 = iconv.decode(lineBuf, 'utf8');
+    // 若 UTF-8 解码出现替换字符，说明源输出不是 UTF-8，改用系统默认编码
+    if (!utf8.includes('�')) return utf8;
+    return iconv.decode(lineBuf, fallbackEncoding);
+  };
+
+  const emitLine = (lineBuf: Buffer): void => {
+    const line = decodeLine(lineBuf).replace(/\r$/, '').replace(/\n$/, '');
     emit(line);
   };
 
   const split = (): void => {
-    // 循环处理 \n 和 \r 两种行尾
     let idx: number;
-    while ((idx = buf.search(/[\r\n]/)) >= 0) {
-      const line = buf.slice(0, idx + 1); // 包含换行符
-      buf = buf.slice(idx + 1);
-      emitLine(line);
+    // 先按 \n 切分（兼容 \r\n）
+    while ((idx = rawBuf.indexOf(0x0a)) >= 0) {
+      const lineBuf = rawBuf.slice(0, idx + 1);
+      rawBuf = rawBuf.slice(idx + 1);
+      emitLine(lineBuf);
+    }
+    // 再处理单独的 \r（pg_dump 进度刷新）
+    while ((idx = rawBuf.indexOf(0x0d)) >= 0) {
+      const lineBuf = rawBuf.slice(0, idx + 1);
+      rawBuf = rawBuf.slice(idx + 1);
+      emitLine(lineBuf);
     }
   };
 
   const push = (chunk: Buffer | string): void => {
-    const text = typeof chunk === 'string' ? chunk : decoder.write(chunk);
-    buf += text;
-    if (buf.length > maxBuffer) {
-      emit(buf);
-      buf = '';
+    const bufChunk = typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk;
+    rawBuf = Buffer.concat([rawBuf, bufChunk]);
+    if (rawBuf.length > maxBuffer) {
+      emit(decodeLine(rawBuf).replace(/\r|\n/g, ''));
+      rawBuf = Buffer.alloc(0);
       return;
     }
     split();
   };
 
   const flush = (): void => {
-    // 先解码任何未完成的尾部字节
-    const tail = decoder.end();
-    if (tail) buf += tail;
-    // 把缓冲区分成多行并发出
     split();
-    if (buf.trim().length > 0) {
-      emit(buf);
+    if (rawBuf.length > 0) {
+      const tail = decodeLine(rawBuf).trim();
+      if (tail.length > 0) emit(tail);
     }
-    buf = '';
+    rawBuf = Buffer.alloc(0);
   };
 
   return { push, flush };
