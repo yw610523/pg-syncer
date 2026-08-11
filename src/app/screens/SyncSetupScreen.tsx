@@ -13,15 +13,14 @@ import { Hint, StepHeader } from '../components/UI.js';
 
 type Field = 'target' | 'databases' | 'format' | 'jobs';
 type Modal = 'none' | 'target' | 'format' | 'databases';
-type FocusArea = { type: 'field'; field: Field } | { type: 'mapping'; index: number } | { type: 'start' };
+
+const FIELDS: Field[] = ['target', 'databases', 'format', 'jobs'];
 
 const FORMAT_OPTIONS = [
   { label: 'Directory (-Fd) · 目录格式，支持多线程并行，大库首选', value: 'directory' },
   { label: 'Custom    (-Fc) · 自定义格式，压缩存储，支持并行 restore', value: 'custom' },
   { label: 'Plain     (-Fp) · 纯 SQL 文本，恢复时走 psql', value: 'plain' },
 ] as const;
-
-const FIELD_LIST: Field[] = ['target', 'databases', 'format', 'jobs'];
 
 function clampJobs(n: number): number {
   return Math.max(1, Math.min(16, n || 4));
@@ -66,21 +65,25 @@ export function SyncSetupScreen({ source, tools, onDone, onCancel }: SyncSetupSc
   const [jobs, setJobs] = useState('4');
   const [mappings, setMappings] = useState<DbMapping[]>([]);
 
-  const [modal, setModal] = useState<Modal>('none');
   const [focusIndex, setFocusIndex] = useState(0);
+  const [modal, setModal] = useState<Modal>('none');
   const [renameIndex, setRenameIndex] = useState<number | null>(null);
   const [renameText, setRenameText] = useState('');
 
-  const maxFocus = useMemo(() => {
-    // 4 个表单字段 + 每个映射行 + 开始按钮
-    return 3 + Math.max(0, mappings.length) + 1;
-  }, [mappings.length]);
+  // 焦点计算：4 个表单字段 + 每个映射行 + 开始同步按钮
+  const mappingStartIndex = FIELDS.length;
+  const startIndex = mappingStartIndex + mappings.length;
+  const maxFocusIndex = Math.max(FIELDS.length, startIndex);
 
-  const focusArea = useMemo<FocusArea>(() => {
-    if (focusIndex <= 3) return { type: 'field', field: FIELD_LIST[focusIndex] };
-    if (focusIndex <= 3 + mappings.length) return { type: 'mapping', index: focusIndex - 4 };
-    return { type: 'start' };
-  }, [focusIndex, mappings.length]);
+  const isMappingFocus = focusIndex >= mappingStartIndex && focusIndex < startIndex;
+  const mappingRowIndex = isMappingFocus ? focusIndex - mappingStartIndex : -1;
+  const isStartFocus = focusIndex === startIndex;
+  const activeField: Field | null =
+    focusIndex < FIELDS.length ? FIELDS[focusIndex] : null;
+
+  const moveFocus = (delta: number): void => {
+    setFocusIndex((i) => Math.max(0, Math.min(maxFocusIndex, i + delta)));
+  };
 
   // 查询源环境数据库
   useEffect(() => {
@@ -125,10 +128,6 @@ export function SyncSetupScreen({ source, tools, onDone, onCancel }: SyncSetupSc
     void buildMappings(selectedDbs, target);
   }, [selectedDbs, target, buildMappings]);
 
-  const moveFocus = (delta: number): void => {
-    setFocusIndex((c) => Math.max(0, Math.min(maxFocus, c + delta)));
-  };
-
   const updateConflict = (index: number, conflict: DbMapping['conflict']): void => {
     setMappings((prev) => {
       const next = [...prev];
@@ -157,20 +156,21 @@ export function SyncSetupScreen({ source, tools, onDone, onCancel }: SyncSetupSc
   };
 
   useInput((input, key) => {
-    if (modal !== 'none') return;
-
-    if (renameIndex !== null) {
-      if (key.escape) setRenameIndex(null);
-      return;
-    }
+    if (modal !== 'none' || renameIndex !== null) return;
 
     if (key.escape) {
       onCancel();
       return;
     }
 
-    if (focusArea.type === 'mapping') {
-      const idx = focusArea.index;
+    if (isStartFocus) {
+      if (key.return || input === 's' || input === 'S') startSync();
+      else if (key.upArrow) moveFocus(-1);
+      return;
+    }
+
+    if (isMappingFocus) {
+      const idx = mappingRowIndex;
       if (key.upArrow) moveFocus(-1);
       else if (key.downArrow) moveFocus(1);
       else if (input === 'o' || input === 'O') updateConflict(idx, 'overwrite');
@@ -185,12 +185,6 @@ export function SyncSetupScreen({ source, tools, onDone, onCancel }: SyncSetupSc
       return;
     }
 
-    if (focusArea.type === 'start') {
-      if (key.return || input === 's' || input === 'S') startSync();
-      else if (key.upArrow) moveFocus(-1);
-      return;
-    }
-
     // 表单字段导航
     if (key.tab) {
       moveFocus(key.shift ? -1 : 1);
@@ -199,9 +193,9 @@ export function SyncSetupScreen({ source, tools, onDone, onCancel }: SyncSetupSc
     if (key.upArrow) moveFocus(-1);
     else if (key.downArrow) moveFocus(1);
     else if (key.return) {
-      if (focusArea.field === 'target') setModal('target');
-      else if (focusArea.field === 'databases') setModal('databases');
-      else if (focusArea.field === 'format') setModal('format');
+      if (activeField === 'target') setModal('target');
+      else if (activeField === 'databases') setModal('databases');
+      else if (activeField === 'format') setModal('format');
     }
   });
 
@@ -281,7 +275,7 @@ export function SyncSetupScreen({ source, tools, onDone, onCancel }: SyncSetupSc
   }
 
   const renderField = (field: Field, label: string, value: React.ReactNode): React.ReactNode => {
-    const active = focusArea.type === 'field' && focusArea.field === field;
+    const active = activeField === field;
     return (
       <Box key={field} marginTop={1}>
         <Box width={16}>
@@ -338,7 +332,7 @@ export function SyncSetupScreen({ source, tools, onDone, onCancel }: SyncSetupSc
           <Text bold color="gray">库名映射与冲突处理</Text>
           <Box flexDirection="column" overflow="hidden">
             {mappings.map((m, i) => {
-              const active = focusArea.type === 'mapping' && focusArea.index === i;
+              const active = isMappingFocus && i === mappingRowIndex;
               const displayTarget =
                 m.conflict === 'rename' ? (m.renamedTo ?? m.targetDb) : m.targetDb;
               const conflictText =
@@ -394,16 +388,16 @@ export function SyncSetupScreen({ source, tools, onDone, onCancel }: SyncSetupSc
 
       <Box marginTop={2} justifyContent="space-between">
         <Text
-          color={focusArea.type === 'start' ? 'black' : 'green'}
-          backgroundColor={focusArea.type === 'start' ? 'green' : undefined}
-          bold={focusArea.type === 'start'}
+          color={isStartFocus ? 'black' : 'green'}
+          backgroundColor={isStartFocus ? 'green' : undefined}
+          bold={isStartFocus}
         >
-          {focusArea.type === 'start' ? '▸ ' : '  '}🚀 开始同步
+          {isStartFocus ? '▸ ' : '  '}🚀 开始同步
         </Text>
         <Text dimColor>Tab/↑/↓ 切换 · Enter 编辑/开始 · Esc 取消</Text>
       </Box>
 
-      {focusArea.type === 'mapping' && renameIndex === null && (
+      {isMappingFocus && renameIndex === null && (
         <Box marginTop={1}>
           <Text dimColor>↑/↓ 选择库 · [o] 覆盖 · [k] 跳过 · [r] 重命名</Text>
         </Box>
