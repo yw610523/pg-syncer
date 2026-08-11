@@ -152,6 +152,69 @@ export function databaseExists(
   });
 }
 
+/** 测试环境连接是否可用：尝试执行 SELECT 1 */
+export function testConnection(env: DbEnvironment, psqlPath: string): Promise<{ ok: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    const envVars: NodeJS.ProcessEnv = { ...process.env };
+    envVars.PGPASSWORD = env.password ?? '';
+    envVars.PGSSLMODE = env.sslMode || 'prefer';
+    if (env.sslRootCert) envVars.PGSSLROOTCERT = env.sslRootCert;
+    if (env.sslCert) envVars.PGSSLCERT = env.sslCert;
+    if (env.sslKey) envVars.PGSSLKEY = env.sslKey;
+
+    let child;
+    try {
+      child = spawn(
+        psqlPath,
+        ['-d', buildConnString(env), '-t', '-A', '-c', 'SELECT 1;'],
+        {
+          env: envVars,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          windowsHide: true,
+        },
+      );
+    } catch (err) {
+      resolve({ ok: false, error: `启动 psql 失败：${(err as Error).message}` });
+      return;
+    }
+
+    let stderr = '';
+    child.stdout?.on('data', () => {
+      // 忽略 stdout，只关心退出码
+    });
+    child.stderr?.on('data', (d: Buffer) => {
+      stderr += d.toString();
+    });
+
+    const timer = setTimeout(() => {
+      try {
+        child?.kill();
+      } catch {
+        /* ignore */
+      }
+      resolve({ ok: false, error: '连接测试超时（10s）' });
+    }, 10000);
+    timer.unref?.();
+
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      resolve({ ok: false, error: `psql 进程错误：${err.message}` });
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (code === 0) {
+        resolve({ ok: true });
+      } else {
+        const firstLine = stderr.split('\n').find((l) => l.trim()) ?? '';
+        resolve({
+          ok: false,
+          error: `连接测试失败${firstLine ? `：${firstLine}` : `（退出码 ${code}）`}`,
+        });
+      }
+    });
+  });
+}
+
 /** 在目标环境创建数据库 */
 export function createDatabase(
   env: DbEnvironment,

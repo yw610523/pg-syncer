@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
+import { config } from '../../config/store.js';
 import { detectInDir, probeVersions } from '../../core/toolkit.js';
 import type { ToolPaths } from '../../core/types.js';
 import { FilePicker } from '../components/FilePicker.js';
@@ -42,6 +43,7 @@ export function ToolSetupScreen({ onComplete }: ToolSetupScreenProps) {
   });
 
   const handleDir = (full: string): void => {
+    config.setLastPickerDir(full);
     const t = detectInDir(full);
     if (t.pgDump && t.pgRestore) {
       setDir(full);
@@ -68,7 +70,7 @@ export function ToolSetupScreen({ onComplete }: ToolSetupScreenProps) {
           onlyDirectories
           title="选择 PostgreSQL 安装目录（PG_HOME）"
           startDir={
-            process.env.PROGRAMFILES ? `${process.env.PROGRAMFILES}\\PostgreSQL` : undefined
+            config.snapshot.lastPickerDir ?? (process.env.PROGRAMFILES ? `${process.env.PROGRAMFILES}\\PostgreSQL` : undefined)
           }
           onSelect={handleDir}
           onCancel={() => setPhase('intro')}

@@ -7,7 +7,19 @@ import type { ConfigData } from './types.js';
 const CONFIG_DIR = path.join(os.homedir(), '.pg-syncer');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 
+const nowIso = (): string => new Date().toISOString();
+
+function ensureTimestamps(env: DbEnvironment): DbEnvironment {
+  const ts = nowIso();
+  return {
+    ...env,
+    createdAt: env.createdAt ?? ts,
+    updatedAt: env.updatedAt ?? ts,
+  };
+}
+
 function defaultConfig(): ConfigData {
+  const ts = nowIso();
   return {
     version: 1,
     tools: { pgDump: null, pgRestore: null, psql: null },
@@ -21,9 +33,12 @@ function defaultConfig(): ConfigData {
         password: 'postgres',
         database: 'postgres',
         sslMode: 'disable',
+        createdAt: ts,
+        updatedAt: ts,
       },
     ],
     last: null,
+    lastPickerDir: null,
   };
 }
 
@@ -50,13 +65,14 @@ export class ConfigStore {
       const base = defaultConfig();
       // 若已有环境列表则保留；空列表则补 localhost 默认环境（幂等，避免反复注入）
       const environments = Array.isArray(parsed.environments) && parsed.environments.length > 0
-        ? parsed.environments
+        ? parsed.environments.map(ensureTimestamps)
         : base.environments;
       return {
         ...base,
         tools: { ...base.tools, ...(parsed.tools ?? {}) },
         environments,
         last: parsed.last ?? null,
+        lastPickerDir: parsed.lastPickerDir ?? null,
       };
     } catch {
       return defaultConfig();
@@ -78,10 +94,14 @@ export class ConfigStore {
 
   /** 保存环境：同名覆盖，否则追加 */
   upsertEnvironment(env: DbEnvironment): void {
+    const ts = nowIso();
     this.update((d) => {
       const idx = d.environments.findIndex((e) => e.name === env.name);
-      if (idx >= 0) d.environments[idx] = env;
-      else d.environments.push(env);
+      if (idx >= 0) {
+        d.environments[idx] = { ...ensureTimestamps(env), updatedAt: ts };
+      } else {
+        d.environments.push({ ...ensureTimestamps(env), createdAt: ts, updatedAt: ts });
+      }
     });
   }
 
@@ -96,6 +116,13 @@ export class ConfigStore {
   setLastSync(p: Pick<SyncParams, 'format' | 'jobs' | 'noOwner'> & { source: string; target: string }): void {
     this.update((d) => {
       d.last = { source: p.source, target: p.target, format: p.format, jobs: p.jobs, noOwner: p.noOwner };
+    });
+  }
+
+  /** 记录文件/目录选择器上次打开的位置 */
+  setLastPickerDir(dir: string): void {
+    this.update((d) => {
+      d.lastPickerDir = dir;
     });
   }
 

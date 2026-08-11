@@ -3,7 +3,10 @@ import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import SelectInput from 'ink-select-input';
 import os from 'node:os';
+import path from 'node:path';
 import type { DbEnvironment } from '../../core/types.js';
+import { config } from '../../config/store.js';
+import { testConnection } from '../../core/dbinfo.js';
 import { FilePicker, type DirEntry } from '../components/FilePicker.js';
 import { Hint, StepHeader } from '../components/UI.js';
 
@@ -126,12 +129,30 @@ export function EnvironmentForm({ initial, takenNames, onSave, onCancel }: Envir
   const [error, setError] = useState('');
   const [sslOpen, setSslOpen] = useState(false);
   const [filePickerOpen, setFilePickerOpen] = useState<Field | null>(null);
+  const [testStatus, setTestStatus] = useState<{ ok: boolean; message: string } | null>(null);
+  const [testing, setTesting] = useState(false);
 
   const visibleFields = FIELD_DEFS.filter((d) => d.visible(env));
-  const safeIndex = Math.min(focusIndex, visibleFields.length); // 最后一项是保存按钮
+  // 表单字段 + 测试连接按钮 + 保存按钮
+  const maxFocus = visibleFields.length + 1;
+  const safeIndex = Math.min(focusIndex, maxFocus);
 
   const currentField = focusIndex < visibleFields.length ? visibleFields[focusIndex] : null;
-  const isSaveButton = focusIndex === visibleFields.length;
+  const isTestButton = focusIndex === visibleFields.length;
+  const isSaveButton = focusIndex === visibleFields.length + 1;
+
+  const runTest = async (): Promise<void> => {
+    const psqlPath = config.snapshot.tools.psql;
+    if (!psqlPath) {
+      setTestStatus({ ok: false, message: '未配置 psql 路径，无法测试连接' });
+      return;
+    }
+    setTesting(true);
+    setTestStatus(null);
+    const res = await testConnection(env, psqlPath);
+    setTesting(false);
+    setTestStatus({ ok: res.ok, message: res.ok ? '连接成功' : res.error ?? '连接失败' });
+  };
 
   // Tab / Shift+Tab / ↑/↓ 切换焦点
   useInput((input, key) => {
@@ -141,21 +162,23 @@ export function EnvironmentForm({ initial, takenNames, onSave, onCancel }: Envir
       setError('');
       if (key.shift) {
         // Shift+Tab: 向上
-        setFocusIndex((i) => (i <= 0 ? visibleFields.length : i - 1));
+        setFocusIndex((i) => (i <= 0 ? maxFocus : i - 1));
       } else {
         // Tab: 向下
-        setFocusIndex((i) => (i >= visibleFields.length ? 0 : i + 1));
+        setFocusIndex((i) => (i >= maxFocus ? 0 : i + 1));
       }
     } else if (key.upArrow) {
       setError('');
-      setFocusIndex((i) => (i <= 0 ? visibleFields.length : i - 1));
+      setFocusIndex((i) => (i <= 0 ? maxFocus : i - 1));
     } else if (key.downArrow) {
       setError('');
-      setFocusIndex((i) => (i >= visibleFields.length ? 0 : i + 1));
+      setFocusIndex((i) => (i >= maxFocus ? 0 : i + 1));
     } else if (key.return) {
       setError('');
       if (isSaveButton) {
         save();
+      } else if (isTestButton) {
+        void runTest();
       } else if (currentField) {
         // SSL 字段打开下拉选择器
         if (currentField.key === 'ssl') {
@@ -243,9 +266,10 @@ export function EnvironmentForm({ initial, takenNames, onSave, onCancel }: Envir
           onlyFiles
           filter={field === 'clientKey' ? KEY_FILTER : CERT_FILTER}
           title={label}
-          startDir={os.homedir()}
+          startDir={config.snapshot.lastPickerDir ?? os.homedir()}
           onSelect={(full) => {
             setEnv((e) => setFieldValue(e, field, full));
+            config.setLastPickerDir(path.dirname(full));
             setFilePickerOpen(null);
           }}
           onCancel={() => setFilePickerOpen(null)}
@@ -321,8 +345,16 @@ export function EnvironmentForm({ initial, takenNames, onSave, onCancel }: Envir
         );
       })}
 
-      {/* 保存按钮 */}
-      <Box marginTop={2} justifyContent="center">
+      {/* 测试连接 + 保存按钮 */}
+      <Box marginTop={2} justifyContent="center" gap={2}>
+        <Text
+          color={isTestButton ? 'black' : 'yellow'}
+          backgroundColor={isTestButton ? 'yellow' : undefined}
+          bold={isTestButton}
+          dimColor={testing}
+        >
+          {isTestButton ? '▸ ' : '  '}{testing ? '⏳ 测试中…' : '🔌 测试连接'}
+        </Text>
         <Text
           color={isSaveButton ? 'black' : 'green'}
           backgroundColor={isSaveButton ? 'green' : undefined}
@@ -332,6 +364,14 @@ export function EnvironmentForm({ initial, takenNames, onSave, onCancel }: Envir
         </Text>
       </Box>
 
+      {testStatus ? (
+        <Box marginTop={1} justifyContent="center">
+          <Text color={testStatus.ok ? 'green' : 'red'}>
+            {testStatus.ok ? '✓' : '✗'} {testStatus.message}
+          </Text>
+        </Box>
+      ) : null}
+
       {error ? (
         <Box marginTop={1}>
           <Text color="yellow">⚠ {error}</Text>
@@ -339,7 +379,7 @@ export function EnvironmentForm({ initial, takenNames, onSave, onCancel }: Envir
       ) : null}
 
       <Hint>
-        Tab/↑/↓ 切换字段 · Enter 提交（文本字段跳下一个，证书字段选文件）· Esc 取消
+        Tab/↑/↓ 切换字段 · Enter 提交/测试（文本字段跳下一个，证书字段选文件）· Esc 取消
       </Hint>
     </Box>
   );

@@ -24,7 +24,7 @@ export function RunScreen({ params, onDone }: RunScreenProps) {
   const [restoreLines, setRestoreLines] = useState<string[]>([]);
   const [elapsed, setElapsed] = useState(0);
   const pipelineRef = useRef<Pipeline | null>(null);
-  const panelHeight = Math.max(5, Math.floor((rows - 10) / 2));
+  const panelHeight = Math.max(5, Math.floor((rows - 6) / 2));
 
   useEffect(() => {
     if (pipelineRef.current) return;

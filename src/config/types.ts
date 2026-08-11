@@ -15,4 +15,6 @@ export interface ConfigData {
     jobs: number;
     noOwner: boolean;
   } | null;
+  /** 文件/目录选择器上次打开的位置 */
+  lastPickerDir: string | null;
 }

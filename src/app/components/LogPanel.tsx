@@ -37,7 +37,6 @@ export function LogPanel({ title, lines, height, color = 'cyan' }: LogPanelProps
       minWidth={0}
       borderStyle="round"
       borderColor={color}
-      height={height + 2}
     >
       <Box justifyContent="space-between" marginBottom={1}>
         <Text bold color={color}>

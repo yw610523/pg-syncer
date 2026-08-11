@@ -10,8 +10,7 @@ export interface ToolPaths {
 /** Dump 格式：目录格式（默认，支持并行）、自定义格式、纯 SQL */
 export type DumpFormat = 'directory' | 'custom' | 'plain';
 
-/**
- * 命名数据库环境（类似 IDEA 数据库插件的连接配置）。
+/** 命名数据库环境（类似 IDEA 数据库插件的连接配置）。
  * 每个环境有独立的名字，同步时按名字选择源 / 目标。
  */
 export interface DbEnvironment {
@@ -33,6 +32,10 @@ export interface DbEnvironment {
   sslCert?: string;
   /** PGSSLKEY 客户端私钥（可选） */
   sslKey?: string;
+  /** 创建时间戳（ISO 8601） */
+  createdAt?: string;
+  /** 最近修改时间戳（ISO 8601） */
+  updatedAt?: string;
 }
 
 /** 单个数据库的同步映射：源库名 → 目标库名 */

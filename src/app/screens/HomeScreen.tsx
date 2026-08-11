@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { config } from '../../config/store.js';
 import type { DbEnvironment } from '../../core/types.js';
@@ -28,7 +28,13 @@ export function HomeScreen({ onAction }: HomeScreenProps) {
   const [menu, setMenu] = useState<{ x: number; y: number; env: DbEnvironment | null } | null>(null);
   const [warn, setWarn] = useState('');
 
-  const environments = config.snapshot.environments;
+  const environments = useMemo(() => {
+    return [...config.snapshot.environments].sort((a, b) => {
+      const ta = b.updatedAt ?? b.createdAt ?? '';
+      const tb = a.updatedAt ?? a.createdAt ?? '';
+      return ta.localeCompare(tb);
+    });
+  }, []);
   const safeCursor = Math.min(cursor, Math.max(0, environments.length - 1));
   const selected = environments[safeCursor] ?? null;
   const canSync = environments.length >= 2;

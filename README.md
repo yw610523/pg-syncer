@@ -38,13 +38,15 @@
 | 工具自检 | 启动时在 `PATH` 与常见安装目录中探测 `pg_dump` / `pg_restore` / `psql`；未找到时通过键盘目录树引导选择 PostgreSQL 安装目录（`PG_HOME` 或 `bin`）。 |
 | 命名环境 | 每个连接有独立名字（如 `sit1`），包含 host、port、user、password、database、SSL 模式、CA/客户端证书、客户端私钥；保存后持久化到配置文件。 |
 | 默认 localhost | 首次启动自动注入 `localhost` 环境（`postgres/postgres/5432`，SSL `disable`），可立即开始同步。 |
-| XShell 风格环境管理 | 双栏布局：左侧环境列表，右侧详情面板；支持 [n] 新建、[e] 编辑、[x] 删除、[s] 同步。 |
+| XShell 风格环境管理 | 双栏布局：左侧环境列表，右侧详情面板；支持 [n] 新建、[e] 编辑、[x] 删除、[s] 同步；环境按最近修改时间排序，新建/编辑后自动置顶。 |
 | 同步门禁 | 环境数 < 2 时禁用同步按钮并提示用户新建环境。 |
 | 多库批量同步 | 选中源环境后自动用 `psql` 查询可连接用户数据库（排除 `template0` / `template1` / `postgres`），默认全选；支持 Space 勾选/取消、`a` 全选/全不选。 |
+| 同步参数表单 | 目标环境、同步数据库、Dump 格式、并行线程数集中在单页表单中编辑（类似环境表单），不再分步向导。 |
 | 目标库命名规则 | 默认 `${sourceDb}_${sourceEnvName}`（如 `appdb_sit1`）。 |
-| 冲突处理 | 目标库已存在时可在确认面板选择：覆盖（先 `DROP DATABASE` 再创建）、跳过、重命名。 |
-| 目录/文件选择器 | 工具缺失或选择 SSL 证书时，可用键盘浏览目录树，按 `Space`（目录模式）或 `Enter`（文件模式）选择。 |
-| 双栏日志 | Dump 与 Restore 实时日志左右分栏、自动滚动、↑/↓ 可回卷。 |
+| 冲突处理 | 目标库已存在时可在映射列表中选择：覆盖（先 `DROP DATABASE` 再创建）、跳过、重命名。 |
+| 连接测试 | 环境表单底部提供「测试连接」按钮，保存前可先用 `psql` 验证连接是否可达。 |
+| 目录/文件选择器 | 工具缺失或选择 SSL 证书时，可用键盘浏览目录树，按 `Space`（目录模式）或 `Enter`（文件模式）选择；选择器会记住上次打开的位置。 |
+| 双栏日志 | Dump 与 Restore 实时日志左右分栏、自动滚动、占满剩余空间、↑/↓ 可回卷。 |
 | 并行执行 | 通过 `-j N` 控制 `pg_dump` / `pg_restore` 并行线程数，范围 1~16，默认 4。 |
 | SSL 透传 | 通过 `PGSSLMODE` / `PGSSLROOTCERT` / `PGSSLCERT` / `PGSSLKEY` 环境变量透传给子进程。 |
 | 配置持久化 | 环境、工具路径、最近参数保存到 `~/.pg-syncer/config.json`，原子写入（先写临时文件再 rename）。 |
@@ -113,13 +115,10 @@ npm run typecheck  # 仅类型检查，不输出文件
  │   │   ➕ 新建环境…               │ 用户    pgadmin     │
  │   └────────────────────────────┴─ 数据库  appdb       ─┘
  │   [n] 新建 · [e] 编辑 · [x] 删除 · [s] 同步 · [Enter] 详情 · [q] 退出
- ├─ 同步向导（按 s 从主界面开始）
- │   ① 查询源环境数据库（自动，排除 template0/template1/postgres）
- │   ② 批量选择数据库（默认全选，Space 切换，a 全选/全不选）
- │   ③ 选择目标环境（默认 localhost，可修改）
- │   ④ 选择 Dump 格式（Directory / Custom / Plain）
- │   ⑤ 设置并行线程数（1~16，默认 4）
- │   ⑥ 确认面板（库名映射 + 冲突处理：覆盖/跳过/重命名）
+ ├─ 同步参数表单（按 s 从主界面开始）
+ │   - 目标环境、同步数据库、Dump 格式、并行线程数在同一页面编辑
+ │   - 下方显示库名映射与冲突状态（覆盖 / 跳过 / 重命名）
+ │   - 确认后直接开始同步
  ├─ 执行面板  多库循环 dump → restore + 双栏日志 + 进度
  └─ 结果面板  每个库成功/失败状态 + 失败日志
 ```
@@ -129,10 +128,10 @@ npm run typecheck  # 仅类型检查，不输出文件
 | 场景 | 操作 |
 | --- | --- |
 | **主界面** | `↑`/`↓` 选择环境 · `n` 新建 · `e` 编辑 · `x` 删除 · `s` 同步（环境<2 时提示） · `Enter` 详情 · `q` 退出 |
+| **同步参数表单** | `Tab`/`Shift+Tab`/`↑`/`↓` 切换字段 · `Enter` 编辑字段（目标/格式下拉、数据库选择器、线程数输入）· `Esc` 取消 · 映射列表中 `o` 覆盖 · `k` 跳过 · `r` 重命名 |
 | **批量选库** | `↑`/`↓` 移动 · `Space`/`Enter` 勾选 · `a` 全选/全不选 · `s` 确认 · `Esc` 取消 |
 | **目标选择 / 格式选择** | `↑`/`↓` 移动 · `Enter` 选择 · `Esc` 取消 |
-| **确认面板** | `↑`/`↓` 选择库 · `o` 覆盖 · `k` 跳过 · `r` 重命名（按 `r` 后输入自定义库名，Enter 确认） · `Enter` 开始同步 · `Esc` 取消 |
-| **环境表单** | `Tab`/`Shift+Tab`/`↑`/`↓` 切换字段（自动编辑）· 文本字段 `Enter` 跳下一个 · SSL `Enter` 下拉选择 · 证书 `Enter` 文件选择器 · 💾 保存按钮 `Enter` 提交 · `Esc` 取消 |
+| **环境表单** | `Tab`/`Shift+Tab`/`↑`/`↓` 切换字段（自动编辑）· 文本字段 `Enter` 跳下一个 · SSL `Enter` 下拉选择 · 证书 `Enter` 文件选择器 · 🔌 测试连接按钮 `Enter` 测试 · 💾 保存按钮 `Enter` 提交 · `Esc` 取消 |
 | **目录 / 文件选择器** | `←`/`Backspace` 上级目录；目录模式 `Space` 选择当前目录；文件模式 `Enter` 选择当前文件 |
 | **执行日志** | `↑`/`↓` 回卷（默认跟随底部自动滚动），`Ctrl+C` 中断任务 |
 | **结果面板** | `Enter` / `q` 返回主界面 |
@@ -171,25 +170,21 @@ npm run typecheck  # 仅类型检查，不输出文件
       "password": "********",
       "database": "appdb",
       "sslMode": "verify-full",
-      "sslRootCert": "C:\\certs\\prod.crt"
-    },
-    {
-      "name": "local",
-      "host": "localhost",
-      "port": 5432,
-      "user": "postgres",
-      "database": "appdb",
-      "sslMode": "prefer"
+      "sslRootCert": "C:\\certs\\prod.crt",
+      "createdAt": "2026-08-11T00:00:00.000Z",
+      "updatedAt": "2026-08-11T00:00:00.000Z"
     }
   ],
-  "last": { "source": "sit1", "target": "local", "format": "directory", "jobs": 4, "noOwner": true }
+  "last": { "source": "sit1", "target": "local", "format": "directory", "jobs": 4, "noOwner": true },
+  "lastPickerDir": "C:\\certs"
 }
 ```
 
 - `version`：配置文件版本号，当前为 `1`。
 - `tools`：已解析的 PostgreSQL 工具绝对路径。
-- `environments`：命名环境列表；每个环境包含 `name`、`host`、`port`、`user`、`password`（可选）、`database`、`sslMode`、以及可选的 `sslRootCert` / `sslCert` / `sslKey`。
+- `environments`：命名环境列表；每个环境包含 `name`、`host`、`port`、`user`、`password`（可选）、`database`、`sslMode`、可选的 `sslRootCert` / `sslCert` / `sslKey`，以及 `createdAt` / `updatedAt` 时间戳。
 - `last`：最近一次同步的参数快照（源/目标按环境名记录）。
+- `lastPickerDir`：文件/目录选择器上次打开的位置。
 
 > 安全说明：界面中密码字段以 `●●●●●●` 掩码显示；连接串只包含 `user@host:port/db`，密码通过 `PGPASSWORD` 环境变量透传给子进程，不会出现在进程列表或日志中。但配置文件以明文保存，请注意文件权限。
 
