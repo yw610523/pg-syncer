@@ -40,7 +40,7 @@ const FIELD_DEFS: Array<{ key: Field; label: string; visible: (e: DbEnvironment)
   { key: 'port', label: '端口', visible: () => true },
   { key: 'user', label: '用户名', visible: () => true },
   { key: 'password', label: '密码', visible: () => true },
-  { key: 'database', label: '数据库名', visible: () => true },
+  { key: 'database', label: '数据库名（可选）', visible: () => true },
   { key: 'ssl', label: 'SSL 模式', visible: () => true },
   {
     key: 'rootCert',
@@ -72,7 +72,7 @@ function getFieldValue(e: DbEnvironment, f: Field): string {
     case 'password':
       return e.password ?? '';
     case 'database':
-      return e.database;
+      return e.database ?? '';
     case 'ssl':
       return e.sslMode;
     case 'rootCert':
@@ -222,17 +222,12 @@ export function EnvironmentForm({ initial, takenNames, onSave, onCancel }: Envir
       setFocusIndex(FIELD_DEFS.findIndex((d) => d.key === 'user'));
       return;
     }
-    if (!env.database.trim()) {
-      setError('数据库名不能为空');
-      setFocusIndex(FIELD_DEFS.findIndex((d) => d.key === 'database'));
-      return;
-    }
     onSave({
       ...env,
       name,
       host,
       user: env.user.trim(),
-      database: env.database.trim(),
+      database: env.database?.trim() || undefined,
     });
   };
 

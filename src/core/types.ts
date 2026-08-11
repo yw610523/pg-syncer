@@ -23,7 +23,7 @@ export interface DbEnvironment {
   user: string;
   /** 密码（可选，通过 PGPASSWORD 传给子进程，不写入连接串） */
   password?: string;
-  database: string;
+  database?: string;
   /** PGSSLMODE */
   sslMode: string;
   /** PGSSLROOTCERT（可选） */

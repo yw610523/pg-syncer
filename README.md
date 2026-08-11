@@ -8,7 +8,7 @@
 - **默认单向同步**：远程源数据库 → 本地目标数据库。
 - **默认 Directory 格式（`-Fd`）**：天然支持多线程并行 dump / restore，适合大库。
 - 可切换为 Custom（`-Fc`）或 Plain SQL（`-Fp`）格式。
-- **命名环境**：像 IDE 数据库插件一样，把每个连接保存为命名环境（如 `sit1`、`prod`），分字段填写 host / port / 用户 / 密码 / 库名 / SSL 证书。
+- **命名环境**：像 IDE 数据库插件一样，把每个连接保存为命名环境（如 `sit1`、`prod`），分字段填写 host / port / 用户 / 密码 / 库名（可选）/ SSL 证书。环境列表摘要只显示 `user@host:port`，更简洁。
 - **多库批量同步**：选中源环境后自动查询所有用户数据库，默认全选，批量同步到目标环境。
 - **目标库命名规则**：默认 `${source_db}_${source_env}`，例如 `appdb_sit1`。
 - **开箱即带 localhost 环境**：首次启动自动预置本地环境，降低首次使用门槛。
@@ -36,7 +36,7 @@
 | --- | --- |
 | 全屏接管 | 启动即进入终端备用屏幕缓冲区（类似 `vim` / `htop`），退出时自动还原原界面与光标位置。 |
 | 工具自检 | 启动时在 `PATH` 与常见安装目录中探测 `pg_dump` / `pg_restore` / `psql`；未找到时通过键盘目录树引导选择 PostgreSQL 安装目录（`PG_HOME` 或 `bin`）。 |
-| 命名环境 | 每个连接有独立名字（如 `sit1`），包含 host、port、user、password、database、SSL 模式、CA/客户端证书、客户端私钥；保存后持久化到配置文件。 |
+| 命名环境 | 每个连接有独立名字（如 `sit1`），包含 host、port、user、password（可选）、database（可选，默认 `postgres`）、SSL 模式、CA/客户端证书、客户端私钥；保存后持久化到配置文件。 |
 | 默认 localhost | 首次启动自动注入 `localhost` 环境（`postgres/postgres/5432`，SSL `disable`），可立即开始同步。 |
 | XShell 风格环境管理 | 双栏布局：左侧环境列表，右侧详情面板；支持 [n] 新建、[e] 编辑、[x] 删除、[s] 同步；环境按最近修改时间排序，新建/编辑后自动置顶。 |
 | 同步门禁 | 环境数 < 2 时禁用同步按钮并提示用户新建环境。 |
@@ -182,11 +182,11 @@ npm run typecheck  # 仅类型检查，不输出文件
 
 - `version`：配置文件版本号，当前为 `1`。
 - `tools`：已解析的 PostgreSQL 工具绝对路径。
-- `environments`：命名环境列表；每个环境包含 `name`、`host`、`port`、`user`、`password`（可选）、`database`、`sslMode`、可选的 `sslRootCert` / `sslCert` / `sslKey`，以及 `createdAt` / `updatedAt` 时间戳。
+- `environments`：命名环境列表；每个环境包含 `name`、`host`、`port`、`user`、`password`（可选）、`database`（可选，默认 `postgres`）、`sslMode`、可选的 `sslRootCert` / `sslCert` / `sslKey`，以及 `createdAt` / `updatedAt` 时间戳。
 - `last`：最近一次同步的参数快照（源/目标按环境名记录）。
 - `lastPickerDir`：文件/目录选择器上次打开的位置。
 
-> 安全说明：界面中密码字段以 `●●●●●●` 掩码显示；连接串只包含 `user@host:port/db`，密码通过 `PGPASSWORD` 环境变量透传给子进程，不会出现在进程列表或日志中。但配置文件以明文保存，请注意文件权限。
+> 安全说明：界面中密码字段以 `●●●●●●` 掩码显示；连接串只包含 `user@host:port/db`（未指定库名时默认 `postgres`），密码通过 `PGPASSWORD` 环境变量透传给子进程，不会出现在进程列表或日志中。但配置文件以明文保存，请注意文件权限。
 
 ## 技术栈
 

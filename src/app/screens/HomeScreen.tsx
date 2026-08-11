@@ -154,7 +154,7 @@ export function HomeScreen({ onAction }: HomeScreenProps) {
               </Box>
               <Box>
                 <Box width={12}><Text dimColor>数据库</Text></Box>
-                <Text>{selected.database}</Text>
+                <Text>{selected.database || 'postgres（默认）'}</Text>
               </Box>
               <Box>
                 <Box width={12}><Text dimColor>SSL</Text></Box>
