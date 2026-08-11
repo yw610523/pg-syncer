@@ -157,7 +157,12 @@ export function SyncSetupScreen({ source, tools, onDone, onCancel }: SyncSetupSc
   };
 
   useInput((input, key) => {
-    if (modal !== 'none' || renameIndex !== null) return;
+    if (modal !== 'none') return;
+
+    if (renameIndex !== null) {
+      if (key.escape) setRenameIndex(null);
+      return;
+    }
 
     if (key.escape) {
       onCancel();
